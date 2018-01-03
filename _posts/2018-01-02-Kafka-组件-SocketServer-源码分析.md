@@ -3,7 +3,7 @@ layout:     post
 title:      Kafka 组件 SocketServer 分析
 subtitle:   Kafka 网络通信基础
 date:       2018-01-02
-author:     Jintao
+author:     Jintao Guan
 header-img: img/post-bg-universe.jpg
 catalog: true
 tags:
@@ -250,10 +250,13 @@ SocketServer 是对一个 broker 的相关 ServerSocket 的抽象，用于管理
 ~~~
 
 ## Processor 线程的运行
-现在我们来看一看 Processor 线程的核心方法 run()。
+现在我们来看一看 Processor 线程的核心方法 run()。这是整个 SocketServer 类最重要的方法。
  + 首先从 newConnection 队列里取出客户端 SocketChannel, 注册到该 Processor 的 KSelector 中, 监听该 channel 的 OP_READ 事件。
+ + 这里有一些令人迷惑，Processor 首先处理的是已经完成的 request 产生的 response。从 requestChannel 的 responseQueues 队列中取出 response，根据 reponse.responseAction 属性（有 NoOpAction，SendAction 和 CloseConnectionAction 三种 responseAction）选择是向客户端发送 response 还是关闭客户端的 SocketChannel 连接。
+ + Processor 的 poll() 方法
  + 读取客户端 SocketChannel 发送的 request，并构造 Kafka 内部网络层通用的 RequestChannel.Request 对象，再将这个 RequestChannel.Request 放入 RequestChannel 对象的 requestQueue 队列中，等待 KafkaRequestHandler 线程对其进行具体的业务操作处理。
- + 
+ + 处理已发送完的 response。
+ + 处理 disconnected 的连接。
 
 ~~~scala
   override def run() {
@@ -267,9 +270,11 @@ SocketServer 是对一个 broker 的相关 ServerSocket 的抽象，用于管理
         configureNewConnections()
         // register any new responses for writing
         
-        // 处理当前所有处理完成的 request 相应的response, 这些 response 都是从 RequestChannel 获得 (requestChannel.receiveResponse)
+        // 首先处理当前所有处理完成的 request 相应的 response
         
-        // 根据 request 的类型来决定从当前连接的 nio selector 中暂时删除读事件监听/添加写事件/关闭当前连接
+        // response 都是通过 RequestChannel.receiveResponse() 方法从 RequestChannel 的 responseQueues 队列获得
+        
+        // 根据 request 的类型来决定从当前连接的 KSelector 中暂时删除读事件监听/添加写事件/关闭当前连接
         
         processNewResponses()
         poll()
@@ -342,6 +347,35 @@ Processor 的 configureNewConnections() 方法负责很关键的一步工作。
   }
 ~~~
 
+~~~scala
+  private def processNewResponses() {
+    var curr = requestChannel.receiveResponse(id)
+    while (curr != null) {
+      try {
+        curr.responseAction match {
+          case RequestChannel.NoOpAction =>
+            // There is no response to send to the client, we need to read more pipelined requests
+            
+            // that are sitting in the server's socket buffer
+            
+            curr.request.updateRequestMetrics
+            trace("Socket server received empty response to send, registering for read: " + curr)
+            val channelId = curr.request.connectionId
+            if (selector.channel(channelId) != null || selector.closingChannel(channelId) != null)
+                selector.unmute(channelId)
+          case RequestChannel.SendAction =>
+            sendResponse(curr)
+          case RequestChannel.CloseConnectionAction =>
+            curr.request.updateRequestMetrics
+            trace("Closing socket connection actively according to the response code.")
+            close(selector, curr.request.connectionId)
+        }
+      } finally {
+        curr = requestChannel.receiveResponse(id)
+      }
+    }
+  }
+~~~
 
 ~~~scala
   private def processCompletedReceives() {
@@ -377,3 +411,118 @@ Processor 的 configureNewConnections() 方法负责很关键的一步工作。
     }
   }
 ~~~
+
+## KafkaRequestHandlerPool 的启动
+当 broker 启动时，KafkaServer.startup() 方法中会调用 KafkaRequestHandlerPool 的构造方法。启动 numThreads 个 KafkaRequestHandler 线程且是daemon线程，作为线程池。
+
+
+~~~scala
+  private val aggregateIdleMeter = newMeter("RequestHandlerAvgIdlePercent", "percent", TimeUnit.NANOSECONDS)
+
+  this.logIdent = "[Kafka Request Handler on Broker " + brokerId + "], "
+  // threads 和 runnables 本质上是一样的, 就是线程池
+  
+  val threads = new Array[Thread](numThreads)
+  val runnables = new Array[KafkaRequestHandler](numThreads)
+
+  // 创建并启动所有的 KafkaRequestHandler 线程
+  
+  for(i <- 0 until numThreads) {
+    runnables(i) = new KafkaRequestHandler(i, brokerId, aggregateIdleMeter, numThreads, requestChannel, apis, time)
+    threads(i) = Utils.daemonThread("kafka-request-handler-" + i, runnables(i))
+    threads(i).start()
+  }
+~~~
+
+## KafkaRequestHandler 的运行
+
+KafkaRequestHandler 线程不断从 requestChannel 的 requestQueue 队列中取出 Request 交给 KafkaApis 处理。KafkaApis 会根据具体的 Request 的数据进行处理，并且将 Response 放入 responseQueues 队列。
+
+~~~scala
+  def run() {
+    while(true) {
+      try {
+        // Request 的成员 ==> processor: Int, connectionId: String, session: Session, buffer: ByteBuffer,
+        
+        // startTimeMs: Long, listenerName: ListenerName, securityProtocol: SecurityProtocol
+        
+        var req : RequestChannel.Request = null
+        while (req == null) {
+          // We use a single meter for aggregate idle percentage for the thread pool.
+          
+          // Since meter is calculated as total_recorded_value / time_window and
+          
+          // time_window is independent of the number of threads, each recorded idle
+          
+          // time should be discounted by # threads.
+          
+          val startSelectTime = time.nanoseconds
+          // 从 RequestChannel 的 requestQueue 中取出 request
+          
+          req = requestChannel.receiveRequest(300)
+          val idleTime = time.nanoseconds - startSelectTime
+          aggregateIdleMeter.mark(idleTime / totalHandlerThreads)
+        }
+
+        if(req eq RequestChannel.AllDone) {
+          debug("Kafka request handler %d on broker %d received shut down command".format(
+            id, brokerId))
+          return
+        }
+        req.requestDequeueTimeMs = time.milliseconds
+        trace("Kafka request handler %d on broker %d handling request %s".format(id, brokerId, req))
+        // KafkaRequestHandler 将所有的具体操作都交给了 KafkaApis, KafkaApis 是和具体业务相关.
+        
+        // KafkaApis 会根据具体的 Request 的数据进行处理, 并且将 Response 放入 responseQueues 队列 
+        
+        apis.handle(req)
+      } catch {
+        case e: Throwable => error("Exception when handling request", e)
+      }
+    }
+  }
+~~~
+
+我们这里大概看一下 KafkaApis.handle() 方法。根据 Request 的具体类型进行不同的具体业务操作。
+
+~~~scala
+def handle(request: RequestChannel.Request) {
+    try {
+      trace("Handling request:%s from connection %s;securityProtocol:%s,principal:%s".
+        format(request.requestDesc(true), request.connectionId, request.securityProtocol, request.session.principal))
+      // 根据 Request 的具体类型进行不同的处理
+      
+      ApiKeys.forId(request.requestId) match {
+        case ApiKeys.PRODUCE => handleProducerRequest(request)
+        case ApiKeys.FETCH => handleFetchRequest(request)
+        case ApiKeys.LIST_OFFSETS => handleOffsetRequest(request)
+        case ApiKeys.METADATA => handleTopicMetadataRequest(request)
+        case ApiKeys.LEADER_AND_ISR => handleLeaderAndIsrRequest(request)
+        case ApiKeys.STOP_REPLICA => handleStopReplicaRequest(request)
+        case ApiKeys.UPDATE_METADATA_KEY => handleUpdateMetadataRequest(request)
+        case ApiKeys.CONTROLLED_SHUTDOWN_KEY => handleControlledShutdownRequest(request)
+        case ApiKeys.OFFSET_COMMIT => handleOffsetCommitRequest(request)
+        case ApiKeys.OFFSET_FETCH => handleOffsetFetchRequest(request)
+        case ApiKeys.GROUP_COORDINATOR => handleGroupCoordinatorRequest(request)
+        case ApiKeys.JOIN_GROUP => handleJoinGroupRequest(request)
+        case ApiKeys.HEARTBEAT => handleHeartbeatRequest(request)
+        case ApiKeys.LEAVE_GROUP => handleLeaveGroupRequest(request)
+        case ApiKeys.SYNC_GROUP => handleSyncGroupRequest(request)
+        case ApiKeys.DESCRIBE_GROUPS => handleDescribeGroupRequest(request)
+        case ApiKeys.LIST_GROUPS => handleListGroupsRequest(request)
+        case ApiKeys.SASL_HANDSHAKE => handleSaslHandshakeRequest(request)
+        case ApiKeys.API_VERSIONS => handleApiVersionsRequest(request)
+        case ApiKeys.CREATE_TOPICS => handleCreateTopicsRequest(request)
+        case ApiKeys.DELETE_TOPICS => handleDeleteTopicsRequest(request)
+        case requestId => throw new KafkaException("Unknown api code " + requestId)
+      }
+    } catch {
+      // 省略 ...
+      
+    } finally
+      // 省略 ...
+      
+  }
+~~~
+
+至此，SocketServer 的工作原理分析结束。
