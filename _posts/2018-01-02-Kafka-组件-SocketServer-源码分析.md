@@ -436,7 +436,7 @@ Processor 的 configureNewConnections() 方法负责很关键的一步工作。
 
 ## KafkaRequestHandler 的运行
 
-KafkaRequestHandler 线程不断从 requestChannel 的 requestQueue 队列中取出 Request 交给 KafkaApis 处理。KafkaApis 会根据具体的 Request 的数据进行处理，并且将 Response 放入 responseQueues 队列。
+KafkaRequestHandler 连接了 KafkaApis 与 Processor。KafkaRequestHandler 线程不断从 requestChannel 的 requestQueue 队列中取出 Request 交给 KafkaApis 处理。KafkaApis 会根据具体的 Request 的数据进行处理，并且将 Response 放入 responseQueues 队列。之后，Processor 会从 responseQueues 取出 response 并发送给客户端的 SocketChannel。
 
 ~~~scala
   def run() {
