@@ -3,7 +3,7 @@ layout:     post
 title:      Kafka 组件 SocketServer 分析
 subtitle:   Kafka 网络通信基础
 date:       2018-01-02
-author:     Jintao Guan
+author:     Jintao
 header-img: img/post-bg-universe.jpg
 catalog: true
 tags:
