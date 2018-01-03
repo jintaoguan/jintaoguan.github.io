@@ -26,7 +26,7 @@ layout: default
     <div class="header-mask"></div>
     <div class="container">
         <div class="row">
-            <div class="col-lg-8 col-lg-offset-2 col-md-10 col-md-offset-1">
+            <div class="col-lg-10 col-lg-offset-2 col-md-8 col-md-offset-1">
                 <div class="post-heading">
                     <div class="tags">
                         {% for tag in page.tags %}
@@ -54,8 +54,8 @@ layout: default
 
     <!-- Post Container -->
             <div class="
-                col-lg-8 col-lg-offset-2
-                col-md-10 col-md-offset-1
+                col-lg-10 col-lg-offset-0
+                col-md-8 col-md-offset-0
                 post-container">
 
 				{{ content }}
@@ -116,14 +116,14 @@ layout: default
     <!-- Side Catalog Container -->
         {% if page.catalog %}
             <div class="
-                col-lg-2 col-lg-offset-0
+                col-lg-1 col-lg-offset-0
                 visible-lg-block
                 sidebar-container
                 catalog-container">
                 <div class="side-catalog">
                     <hr class="hidden-sm hidden-xs">
                     <h5>
-                        <a class="catalog-toggle" href="#">CATALOG</a>
+                        <a class="catalog-toggle" href="#">Catalog</a>
                     </h5>
                     <ul class="catalog-body"></ul>
                 </div>
@@ -132,8 +132,8 @@ layout: default
 
     <!-- Sidebar Container -->
             <div class="
-                col-lg-8 col-lg-offset-2
-                col-md-10 col-md-offset-1
+                col-lg-8 col-lg-offset-0
+                col-md-10 col-md-offset-0
                 sidebar-container">
 
                 <!-- Featured Tags -->
