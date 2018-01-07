@@ -8,7 +8,6 @@ header-img: img/post-bg-universe.jpg
 catalog: true
 tags:
     - kafka
-    - distributed system
 ---
 
 ## 概述
