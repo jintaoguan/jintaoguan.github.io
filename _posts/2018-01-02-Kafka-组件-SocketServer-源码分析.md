@@ -13,13 +13,15 @@ tags:
 ## 概述
 SocketServer 是对一个 broker 的相关 ServerSocket 的抽象，用于管理这个 broker 的底层 socket 连接与网络通信。 broker 所有的网络通信都由其 SocketServer 对象管理和处理。Kafka SocketServer 是基于 Java NIO 来开发的，采用了 Reactor 模式，其中包含了1个 Acceptor 负责接受客户端请求，N个 Processor 负责读写数据，M个 Handler 来处理业务逻辑。
 
+![](/img/post-img/2018-01-02/socket-server.jpg)
+
 每个 Acceptor 对象拥有一个 NSelector 对绑定的 ServerSocketChannel 监听 OP_ACCEPT 消息。
 每个 Processor 都有一个 KSelector，用来监听多个客户端 SocketChannel，因此可以非阻塞地处理多个客户端的读写请求。
 
 每个 Processor 中都有一个 newConnections 队列来缓存客户端连接，负责 Accepter 与 Processor 间的通信。
 所有的 Processor 共用 RequestChannel 的 requestQueue 队列来缓存所有客户端的 request。当 Processor 处理完 request，将该 request 的 response 缓存进 responseQueues 队列(每个 Processor 有自己单独的一个队列)
 
-![](/img/request_lifecycle.png)
+![](/img/post-img/2018-01-02/request_lifecycle.png)
 
 所以 Kafka 的 SocketServer 是一个典型的 SEDA (Staged Event-Driven Architecture) 架构。
 
