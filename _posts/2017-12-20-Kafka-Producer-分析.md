@@ -212,7 +212,7 @@ public final class Cluster {
 
 ## metadata 信息的获取
 
-现在我们再来看看 waitOnMetadata()。 waitOnMetadata() 方法的主要作用是获取这个 topic 的 metadata，返回一个 ClusterAndWaitTime 对象，其中包括 `cluster` 和 `waitedOnMetadataMs`，表示 Cluster metadata 和该函数消耗的时间。
+现在我们再来看看 waitOnMetadata()。 waitOnMetadata() 方法的主要作用是获取这个 topic 的 metadata，返回一个 `ClusterAndWaitTime` 对象，其中包括 `cluster` 和 `waitedOnMetadataMs`，表示 Cluster metadata 和该函数消耗的时间。
  + 首先判断本地有没有这个 topic, 没有则将 metadata 的更新标志设置为 true，表示需要更新 metadata
  + 获取本地缓存的 cluster 信息，如果其中已经有了该 topic 的信息则直接返回缓存的 cluster 信息。
  + 如果本地缓存没有该 topic 的信息，则将 metadata 的更新标志设置为 true，并唤醒 sender 线程从服务器获取 metadata。
@@ -292,7 +292,7 @@ public final class Cluster {
 
 ## record 属于哪个 partition
 
-假如用户没有显式地设置 record 的 partition，那么我们就需要根据序列化后的 key 计算出该 record 所归属的 partition。Kafka 中默认的 DefaultPartitioner 计算 partition 的基本策略是：
+假如用户没有显式地设置 record 的 partition，那么我们就需要根据序列化后的 key 计算出该 record 所归属的 partition。Kafka 中默认的 `DefaultPartitioner` 计算 partition 的基本策略是：
  +  如果用户已为 record 显式地设置了 partition, 那么就用用户设置的 partition。
  +  如果 record 没有设置 partition：
     +  如果 record 有 key, 就用 (该 key 的 murmur2 哈希值 % partitions.size()) 来确定 partition。
@@ -339,7 +339,7 @@ public final class Cluster {
 ~~~
 
 ## RecordAccumulator 分析
-RecordAccumulator 是一个客户端缓存区，用于存放序列化的 key 和 value，可以将多条消息缓存起来，等到一个特定时间批量地将消息写到 Kafka 集群中去。RecordAccumulator 维护了一个 `private final ConcurrentMap<TopicPartition, Deque<RecordBatch>> batches;`，这个 Map 的 key 是 TopicPartition，value 是一个双端队列，队列里存放的是消息集合的数据结构 RecordBatch。
+`RecordAccumulator` 是一个客户端缓存区，用于存放序列化的 key 和 value，可以将多条消息缓存起来，等到一个特定时间批量地将消息写到 Kafka 集群中去。RecordAccumulator 维护了一个 `private final ConcurrentMap<TopicPartition, Deque<RecordBatch>> batches;`，这个 Map 的 key 是 TopicPartition，value 是一个双端队列，队列里存放的是消息集合的数据结构 RecordBatch。
 
 ![](/img/post-img/2017-12-20/record-accumulator.jpg)
 
@@ -450,7 +450,7 @@ RecordAccumulator 的粗略结构图：
 ![](/img/post-img/2017-12-20/record-accumulator-2.png)
 
 ## BufferPool 分析
-可能有人注意到了在 RecordAccumulator 的 append() 方法中使用了 `free.allocate()` 和 `free.deallocate()` 来进行 ByteBuffer 的申请与回收。在 RecordAccumulator 的定义当中我们可以看到 `private final BufferPool free;` ，free 实际是一个 BufferPool 对象。那么 BufferPool 是什么呢？
+可能有人注意到了在 RecordAccumulator 的 append() 方法中使用了 `free.allocate()` 和 `free.deallocate()` 来进行 ByteBuffer 的申请与回收。在 RecordAccumulator 的定义当中我们可以看到 `private final BufferPool free;` ，free 实际是一个 `BufferPool` 对象。那么 BufferPool 是什么呢？
 
 ByteBuffer 的创建与释放非常消耗资源，为了实现内存的高效利用，Kafka 客户端使用 BufferPool 来实现 ByteBuffer 的复用。每个 BufferPool 对象只针对特定大小的（poolableSize 变量指定）ByteBuffer 进行管理，其他大小的 ByteBuffer 并不会缓存进 BufferPool。一般情况下，我们通过调节 RecordAccumulator.batchSize 变量，使一个 MemoryRecords 对象可以存储多个 record。但是如果一条 record 过大，超过 MemoryRecords，那么就不会复用 BufferPool 中缓存的 ByteBuffer，而是额外单独分配 ByteBuffer, 使用完之后也不会放入 BufferPool 进行管理，而是直接丢弃给 GC。
 
@@ -476,7 +476,7 @@ public final class BufferPool {
 ~~~
 
 ## Sender 线程分析
-Sender 线程牵涉到了许多 Kafka 网络通信的内容。由于内容较多，我们会在以后进行更加详细的分析。在这里先留一个坑。
+`Sender` 线程牵涉到了许多 Kafka 网络通信的内容。由于内容较多，我们会在以后进行更加详细的分析。在这里先留一个坑。
 
 
 至此，Kafka Producer 的工作原理分析结束。
