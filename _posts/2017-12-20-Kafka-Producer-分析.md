@@ -3,7 +3,7 @@ layout:     post
 title:      Kafka 客户端 Producer 分析
 subtitle:   
 date:       2017-12-20
-author:     Jintao Guan
+author:     Jintao
 header-img: img/post-bg-universe.jpg
 catalog: true
 tags:
