@@ -101,6 +101,39 @@ SocketServer 是对一个 broker 的相关 ServerSocket 的抽象，用于管理
   }
 ~~~
 
+上面一步中 openServerSocket() 非常重要，它创建了 ServerSocketChannel 并将其绑定至服务器端的指定地址和端口。具体代码如下：
+
+~~~scala
+  private def openServerSocket(host: String, port: Int): ServerSocketChannel = {
+    val socketAddress =
+      if(host == null || host.trim.isEmpty)
+        new InetSocketAddress(port)
+      else
+        new InetSocketAddress(host, port)
+    // 创建一个 ServerSocketChannel 对象
+    
+    val serverChannel = ServerSocketChannel.open()
+    // 将这个 ServerSocketChannel 配置成非阻塞模式
+    
+    serverChannel.configureBlocking(false)
+    // 配置接受 buffer 大小
+    
+    if (recvBufferSize != Selectable.USE_DEFAULT_BUFFER_SIZE)
+      serverChannel.socket().setReceiveBufferSize(recvBufferSize)
+
+    try {
+      // 将这个 ServerSocketChannel 绑定到指定的 socketAddress
+      
+      serverChannel.socket.bind(socketAddress)
+      info("Awaiting socket connections on %s:%d.".format(socketAddress.getHostString, serverChannel.socket.getLocalPort))
+    } catch {
+      case e: SocketException =>
+        throw new KafkaException("Socket server failed to bind to %s:%d: %s.".format(socketAddress.getHostString, port, e.getMessage), e)
+    }
+    serverChannel
+  }
+~~~
+
 ## Acceptor 线程的运行
 然后我们再来看 Acceptor 的 run() 方法，它是 Acceptor 的核心方法，用于监听和接受客户端的连接。
  + 首先将 Acceptor 对应的 ServerSocketChannel 对象注册到 Java NIO Selector 上并监听其 OP_ACCEPT 事件。当有新的客户端连接该 ServerSocket 时，会触发 Java NIO Selector 的 OP_ACCEPT 事件。
