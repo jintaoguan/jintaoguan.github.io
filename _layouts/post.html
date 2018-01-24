@@ -5,6 +5,7 @@ layout: default
 <!-- Image to hack wechat -->
 <!-- <img src="/img/icon_wechat.png" width="0" height="0"> -->
 <!-- <img src="{{ site.baseurl }}/{% if page.header-img %}{{ page.header-img }}{% else %}{{ site.header-img }}{% endif %}" width="0" height="0"> -->
+<script async src="//dn-lbstatics.qbox.me/busuanzi/2.3/busuanzi.pure.mini.js"></script>
 
 <!-- Post Header -->
 <style type="text/css">
@@ -40,7 +41,7 @@ layout: default
                     {% comment %} if page.subtitle {% endcomment %}
                     <h2 class="subheading">{{ page.subtitle }}</h2>
                     {% comment %} endif {% endcomment %}
-                    <span class="meta">Posted by {% if page.author %}{{ page.author }}{% else %}{{ site.title }}{% endif %} on {{ page.date | date: "%B %-d, %Y" }}</span>
+		    <span class="meta">Posted by {% if page.author %}{{ page.author }}{% else %}{{ site.title }}{% endif %} on {{ page.date | date: "%B %-d, %Y" }}. <span id="busuanzi_container_page_pv"> <span id="busuanzi_value_page_pv"></span>  views </span></span>
                 </div>
             </div>
         </div>
