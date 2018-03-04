@@ -10,10 +10,8 @@ tags:
     - kafka
 ---
 
-## 简介
+## Timer 和 TimingWheel 简介
 由于 Kafka 这样的分布式系统请求量大，性能要求高，而 JDK 提供的 `DelayedQueue` 组件在底层使用 `堆` 数据结构，时间复杂度为 `O(log(n))`，所以 Kafka 为了将定时任务的存取操作和取消操作的时间复杂度降至 `O(1)`，实现了时间轮以达到性能要求，不过它的底层还是基于 Java 的 `DelayedQueue` 实现的。在这片文章中，我们将介绍 Timer 的相关功能及其实现。
-
-## Timer 和 TimingWheel
 
 我们先来看一下 `kafka.utils.timer.Timer` 接口的 API。Timer 接口的定义非常简单，为以下 4 个方法：添加任务，推进时钟并执行到期的任务，关闭 Timer 服务，以及查看当前剩余任务的数量。该接口只有一个 `kafka.utils.timer.SystemTimer` 实现，所以我们下面主要分析 SystemTimer 的代码。
 
@@ -154,7 +152,7 @@ TimingWheel 提供了层级时间轮的概念，最底层时间轮的时间粒�
 
 
 ## Timer 执行延迟任务
-添加任务比较容易理解，但是延时任务是如何被 Timer 执行的呢？这是因为外部线程 `ExpiredOperationReaper` 不断调用 `Timer.advanceClock(200L)` 从 `DelayedQueue` 中取出到期任务，并推进 TimingWheel 的内部表针 `currentTime` 变量来维护 TimingWheel 中的延时任务。
+添加任务比较容易理解，但是延时任务是如何被 Timer 执行的呢？这是因为外部线程 `ExpiredOperationReaper` 不断调用 `Timer.advanceClock(200L)` 从 `DelayedQueue` 中取出到期任务，并推进 TimingWheel 的内部表针 `currentTime` 变量来维护 TimingWheel 中的延时任务，同时执行到期的任务。
 
 我们可以从 `SystemTimer.advanceClock(timeoutMs)` 方法开始分析整个过程。
 * 从整个多层级 TimingWheel 共用的 DelayedQueue 中取出已到期的 bucket 即一个 TimerTaskList 对象。值得注意的是这里调用的方法是 `DelayedQueue.poll(timeoutMs, TimeUnit.MILLISECONDS)`，这是一个阻塞方法 - 如果有已经到期的元素，则立刻返回该元素；如果没有到期的元素，则至多等待 timeoutMs 毫秒，等待过程中如果有到期元素则立刻返回该到期元素；如果等待了 timeoutMs 毫秒后仍然没有到期的元素，则返回 null。
@@ -249,9 +247,9 @@ TimingWheel 提供了层级时间轮的概念，最底层时间轮的时间粒�
 
 1）在 Time 0 时刻，TW1 的内部表针 currentTime 变量指向的是 0ms，而 TW2 的内部表针 currentTime 变量指向的也是 0ms。我们在这个时刻从 Timer 加入三个延时任务 `T7`，`T8`，`T9`，三个任务分别延时 7ms，8ms，9ms 后执行。所以我们看到，T7 的延时属于低级时间轮 TW0 的覆盖范围内（0ms - 7ms），所以落入了 TW0。而 T8，T9 的延时超过了 TW0 的覆盖范围，所以被加入了高级时间轮 TW1。那么在各层级时间轮共享的 DelayedQueue 中，我们加入了两个 TimerTaskList 对象。第一个 TimerTaskList 对象的 expiration 字段是 7ms，只包含任务 T7。第二个 TimerTaskList 对象的 expiration 字段是 8ms，包含了任务 T8 和 T9。因为第二个 TimerTaskList 对象被加进了 TW1，所以其 expiration 字段是根据 TW1 时间格来的。
 
-2）`ExpiredOperationReaper` 调用 `Timer.advanceClock(200L)` 方法，该方法先调用 `delayQueue.poll(timeoutMs, TimeUnit.MILLISECONDS)`，它会在阻塞 7ms 后，从 DelayedQueue 取得到期的 TimerTaskList 对象，即 T7 任务所对应的 TimerTaskList。这时就会推进各层级时间轮内部表针到该 TimerTaskList 对应的到期时间戳：先推进 TW0 的 currentTime 到 7ms，然后再推进 TW1 的 currentTime，因为 TW1 的单个时间格跨度为 8ms，所以 TW1 内部表针无法推进。这时 TW0 的覆盖事件跨度是 `[7ms, 15ms)`，TW1 的覆盖时间跨度是 `[0ms, 64ms)`。之后进入 `bucket.flush(reinsert)`，将取出的 TimerTaskList 中所有 TimerTaskEntry 重新加入最底层时间轮 TW0。但是 T7 此时已经到期，就被 SystemTimer 提交到 `SystemTimer.taskExecutor` 线程池执行了。这时图中就是 Time 7 时刻的情况。
+2）`ExpiredOperationReaper` 调用 `Timer.advanceClock(200L)` 方法，该方法先调用 `delayQueue.poll(timeoutMs, TimeUnit.MILLISECONDS)`，它会在阻塞 7ms 后，从 DelayedQueue 取得到期的 TimerTaskList 对象，即 T7 任务所对应的 TimerTaskList。这时就会推进各层级时间轮内部表针到该 TimerTaskList 对应的到期时间戳：先推进 TW0 的 currentTime 到 7ms，然后再推进 TW1 的 currentTime，因为 TW1 的单个时间格跨度为 8ms，所以 TW1 内部表针无法推进。这时 TW0 的覆盖时间跨度是 `[7ms, 15ms)`，TW1 的覆盖时间跨度是 `[0ms, 64ms)`。之后进入 `bucket.flush(reinsert)`，将取出的 TimerTaskList 中所有 TimerTaskEntry 重新加入最底层时间轮 TW0。但是 T7 此时已经到期，就被 SystemTimer 提交到 `SystemTimer.taskExecutor` 线程池执行了。这时图中就是 Time 7 时刻的情况。
 
-3）`ExpiredOperationReaper` 再一次调用 `Timer.advanceClock(200L)` 方法，DelayedQueue 会返回第二个 TimerTaskList 即包含 T8，T9 任务的 TimerTaskList。同样地，先推进各层级时间轮。TW0 的内部表针 currentTime 会变成 8ms，而 TW1 的内部表针 currentTime 也会变成 8ms。这时 TW0 的覆盖事件跨度是 `[8ms, 16ms)`，TW1 的覆盖时间跨度是 `[8ms, 72ms)`。之后调用 `bucket.flush(reinsert)` 重新添加 TimerTaskList 包含的所有延时任务。T8 的 expirationMs 是 8ms，满足 `expirationMs < currentTime + tickMs`，所以已经到期，交给 `SystemTimer.taskExecutor` 线程池执行。而 T9 的 expirationMs 是 9ms，满足条件 `currentTime + tickMs <= expiration < currentTime + interval`，所以它被添加进 Level 0 时间轮 TW0 和 DealyedQueue 中。这时 DelayedQueue 中只有一个 bucket 了，就是 只包含 T9 任务的 TimerTaskList 对象。而 T9 这时从 TW1 被转移到了 TW0 时间轮中。TW0 中只保存了 T9。如图中 Time 8 时刻所示。
+3）`ExpiredOperationReaper` 再一次调用 `Timer.advanceClock(200L)` 方法，DelayedQueue 会返回第二个 TimerTaskList 即包含 T8，T9 任务的 TimerTaskList。同样地，先推进各层级时间轮。TW0 的内部表针 currentTime 会变成 8ms，而 TW1 的内部表针 currentTime 也会变成 8ms。这时 TW0 的覆盖时间跨度是 `[8ms, 16ms)`，TW1 的覆盖时间跨度是 `[8ms, 72ms)`。之后调用 `bucket.flush(reinsert)` 重新添加 TimerTaskList 包含的所有延时任务。T8 的 expirationMs 是 8ms，满足 `expirationMs < currentTime + tickMs`，所以已经到期，交给 `SystemTimer.taskExecutor` 线程池执行。而 T9 的 expirationMs 是 9ms，满足条件 `currentTime + tickMs <= expiration < currentTime + interval`，所以它被添加进 Level 0 时间轮 TW0 和 DealyedQueue 中。这时 DelayedQueue 中只有一个 bucket 了，就是 只包含 T9 任务的 TimerTaskList 对象。而 T9 这时从 TW1 被转移到了 TW0 时间轮中。TW0 中只保存了 T9。如图中 Time 8 时刻所示。
 
 ## 性能比较
 看完代码，自然会产生一些疑问。Kafka 的 `SystemTimer` 同样使用了 `java.util.concurrent.DelayedQueue` 来存储延时任务，为什么还需要多层级时间轮呢？使用多层级时间轮的意义是什么呢？为什么不直接将所有延时任务直接放入 DelayedQueue 然后不断调用 `DelayedQueue.poll()` 取出到期任务再执行呢？这里有两个原因：
