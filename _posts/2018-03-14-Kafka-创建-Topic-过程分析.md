@@ -576,5 +576,7 @@ topic 创建的主要实现是在 `KafkaController.onNewPartitionCreation()` 这
  - KafkaController 启动时会生成监听器监听相关路径，当 topic 列表发生变化，触发监听器。
  - 监听器触发后会更新 Partition/Replica 状态机中 partition 和 replica 的状态，并调用相关方法，并通知其他 broker。
 
+看了一下 Partition/Replica 状态机，其中涉及了太多的 partition 和 replica 状态转移相关的内容，以后应该会专门写一篇博客进行分析。
+
 参考文章：
 * [Kafka 源码解析之 topic 创建过程](http://matt33.com/2017/07/21/kafka-topic-create/)
