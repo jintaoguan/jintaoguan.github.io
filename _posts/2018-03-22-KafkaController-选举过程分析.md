@@ -2,7 +2,7 @@
 layout:     post
 title:      KafkaController 选举过程分析
 subtitle:   Kafka 工作流程（2）
-date:       2018-03-19
+date:       2018-03-22
 author:     Jintao
 header-img: img/post-bg-universe.jpg
 catalog: true
