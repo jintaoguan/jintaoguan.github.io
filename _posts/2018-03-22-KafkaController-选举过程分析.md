@@ -409,7 +409,7 @@ class LeaderChangeListener extends IZkDataListener with Logging {
 ## 总结
 可以看到，KafkaController leader 选举的过程比较复杂，需要对多种情况进行处理。其大致过程是这样：
  - 每个 broker 启动时，会创建 KafkaController 对象并启动它。启动过程中创建了 ZookeeperLeaderElector 对象并启动它。ZookeeperLeaderElector 启动过程中注册监听器 LeaderChangeListener 监控 zookeeper 的 /controller 路径，之后立刻参加 leader 竞选。
-   - **一个 broker 启动之后，会立刻参加 leader 竞选**
+   - **一个 broker 启动之后，会立刻参加 leader 竞选。**
  - KafkaController 启动过程中注册了监听器 SessionExpirationListener 监控 zookeeper session 的连接状态。
    - **每当 zookeeper 的 session 断开重连后，如果当前 leader 不是自己，则先卸任 leader，然后参加竞选。**
  - ZookeeperLeaderElector 启动过程中注册监听器 LeaderChangeListener 监控 leader 变化。
