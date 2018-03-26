@@ -10,6 +10,16 @@ tags:
     - kafka
 ---
 
+## Sender 线程概要
+在我们之前的这片文章 [Kafka 客户端 Producer 分析](https://jintaoguan.github.io/2017/12/20/Kafka-Producer-%E5%88%86%E6%9E%90/) 中，我们在分析 `KafkaProducer` 类的时候发现每当需要向 Kafka 服务器发送数据或者请求的时候，都会去调用 `sender.wakeup()` 方法：
+ - `KafkaProducer.doSend()` 发送 KafkaProducer 中的数据。
+ - `KafkaProducer.waitOnMetadata()` 向 Kafka 服务器请求最新的 metadata 信息。
+ - `KafkaProducer.flush()` 发送 KafkaProducer 中所有的数据。
+
+在以上三个方法中，最后一步都是通过调用 sender.wakeup() 实现数据或者请求的发送。
+
+为什么每次调用 sender.wakeup() 方法就会自动向 Kafka 服务器发送信息呢？我们可以通过今天的这片文章明白其中的原理。
+
 ## Sender 线程运行分析
 在 KafkaProducer 的构造函数中，创建了 `NetworkClient` 对象，并将其作为参数创建了 `Sender` 对象。之后将 sender 包装在一个 `KafkaThread`（KafkaThread 是对 Thread 的简单封装）中，并启动 Sender 线程。之后，进入 `Sender.run()` 方法。所以我们知道每次创建一个 KafkaProducer 对象，其实都会启动一个 Sender 线程用于向各个 broker 发送数据。
 
@@ -470,3 +480,5 @@ public void wakeup() {
 
 参考文章
 * [Kafka 源码分析之 Producer NIO 网络模型（四）](http://matt33.com/2017/08/22/producer-nio/)
+* [Kafka 客户端 Producer 分析](https://jintaoguan.github.io/2017/12/20/Kafka-Producer-%E5%88%86%E6%9E%90/)
+* [Kafka 网络 I/O 核心 KSelector 分析](https://jintaoguan.github.io/2018/01/20/Kafka-%E7%BB%84%E4%BB%B6-KSelector-%E5%88%86%E6%9E%90/)
