@@ -2,7 +2,7 @@
 layout:     post
 title:      uReplicator - Uber 开发的 Kafka Replicator
 subtitle:   Uber Engineering Blog 翻译文章
-date:       2018-03-26
+date:       2018-03-28
 author:     Jintao
 header-img: img/post-bg-2015.jpg
 catalog: true
@@ -10,9 +10,6 @@ tags:
     - kafka
     - uber
 ---
-## 改为28号发
-
-
 # Uber 的 Kafka 架构
 在 Uber，我们使用 `Apache Kafka` 作为数据总线来连接整个生态系统中的各个部分。我们收集系统或者应用程序的日志和 Driver 和 Rider App 的发来的数据。然后我们通过 Kafka 将这些数据提供给不同的下游消费者。Kafka 中的数据既提供给实时处理的 pipeline 也会提供给批处理的 pipeline。实时处理的数据用于计算业务指标，调试，警报和数据表。批处理的数据用于向 `Apache Hadoop` 和 `HP Vertica` 写数据的 ETL。
 
