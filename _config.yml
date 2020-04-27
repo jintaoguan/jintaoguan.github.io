@@ -53,6 +53,9 @@ highlighter: rouge
 kramdown:
   input: GFM                            # use Github Flavored Markdown !important
 
+plugins:
+  - jekyll-paginate
+paginate: 10
 
 
 # 评论系统
