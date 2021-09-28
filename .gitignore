@@ -33,6 +33,5 @@ Temporary Items
 
 # debug file
 _site
-Gemfile
 Gemfile.lock
 .jekyll-cache/*
